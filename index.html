@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>증시 브리핑 대시보드</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --up: #f85149; /* 한국식 상승(적색) */
+      --down: #58a6ff; /* 한국식 하락(청색) */
+      --neutral: #8b949e;
+      --vol: #d29922;
+      --star: #e3b341;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px 16px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+    .header-top { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+    h1 { font-size: 1.5rem; color: #f0f6fc; font-weight: 700; }
+    .timestamp { font-size: 0.85rem; color: var(--text-muted); }
+    .status-badge { display: inline-block; background: #21262d; border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin-top: 8px; }
+    .lead-box { background: #1f242c; border-left: 4px solid var(--border); padding: 12px 16px; margin-top: 16px; border-radius: 0 4px 4px 0; font-size: 0.95rem; }
+
+    section { margin-bottom: 32px; }
+    h2 { font-size: 1.2rem; margin-bottom: 12px; color: #f0f6fc; display: flex; align-items: center; gap: 8px; }
+
+    .table-container { overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+    th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    th { background: #21262d; color: #f0f6fc; font-weight: 600; white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    
+    tr.border-up { border-left: 4px solid var(--up); }
+    tr.border-down { border-left: 4px solid var(--down); }
+    tr.border-neutral { border-left: 4px solid var(--neutral); }
+    tr.border-vol { border-left: 4px solid var(--vol); }
+
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .status-cell { white-space: nowrap; }
+    .desc-cell { min-width: 250px; }
+
+    .t-up { color: var(--up) !important; font-weight: 600; }
+    .t-down { color: var(--down) !important; font-weight: 600; }
+    .t-neutral { color: var(--neutral); }
+    .t-volatile { color: var(--vol); }
+    .stars { color: var(--star); }
+
+    .stats-list { margin-top: 12px; display: grid; gap: 8px; }
+    .stat-item { background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font-size: 0.85rem; }
+    .stat-label { font-weight: 600; color: #f0f6fc; margin-right: 8px; }
+
+    .verdict-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-top: 12px; }
+    .verdict-box p { margin-bottom: 8px; font-size: 0.95rem; }
+    .verdict-box p:last-child { margin-bottom: 0; }
+
+    .scen-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    .scen-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .scen-title { font-weight: 700; color: #f0f6fc; }
+    .scen-intro { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; }
+    .scen-watch { margin-top: 10px; font-size: 0.85rem; color: #f0f6fc; background: #21262d; padding: 8px; border-radius: 4px; }
+
+    footer { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 32px; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">로딩 중...</div>
+
+  <script>
+    async function loadDashboard() {
+      try {
+        const res = await fetch('data.json');
+        if (!res.ok) throw new Error('데이터를 불러올 수 없습니다.');
+        const d = await res.json();
+        render(d);
+      } catch (err) {
+        document.getElementById('app').innerHTML = `<p style="color:var(--up);">오류: ${err.message}</p>`;
+      }
+    }
+
+    function renderTable(tableData) {
+      const headHtml = tableData.head.map(h => `<th>${h}</th>`).join('');
+      const rowsHtml = tableData.rows.map(row => {
+        const borderClass = row.d ? `border-${row.d}` : '';
+        const cellsHtml = row.c.map((cell, idx) => {
+          const colClass = tableData.colcls[idx] || '';
+          let text = cell;
+          let extraClass = '';
+          if (Array.isArray(cell)) {
+            text = cell[0];
+            extraClass = cell[1];
+          } else if (typeof text === 'string') {
+            if (text.startsWith('★')) extraClass = 'stars';
+            else if (text.startsWith('🔺')) extraClass = 't-up';
+            else if (text.startsWith('🔻')) extraClass = 't-down';
+            else if (text.startsWith('⚡')) extraClass = 't-volatile';
+          }
+          return `<td class="${colClass} ${extraClass}">${text}</td>`;
+        }).join('');
+        return `<tr class="${borderClass}">${cellsHtml}</tr>`;
+      }).join('');
+
+      return `<div class="table-container"><table><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    }
+
+    function render(data) {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <header>
+          <div class="header-top">
+            <h1>한국 투자자 관점 증시 브리핑</h1>
+            <span class="timestamp">${data.stamp}</span>
+          </div>
+          <div><span class="status-badge">${data.sub}</span></div>
+          <div class="lead-box">${data.lead}</div>
+        </header>
+
+        <section>
+          <h2>1. 시장 현황</h2>
+          ${renderTable(data.market)}
+          <div class="stats-list">
+            ${data.stats.map(s => `<div class="stat-item"><span class="stat-label">${s[0]}</span>${s[1]}</div>`).join('')}
+          </div>
+        </section>
+
+        <section>
+          <h2>2. 뉴스별 중요도 · 방향</h2>
+          ${renderTable(data.news)}
+          <div class="verdict-box">
+            ${data.verdict.map(p => `<p>${p}</p>`).join('')}
+          </div>
+        </section>
+
+        <section>
+          <h2>3. 향후 7일 일정</h2>
+          ${renderTable(data.cal)}
+        </section>
+
+        <section>
+          <h2>4. 주요 시나리오</h2>
+          ${data.scen.map(s => `
+            <div class="scen-card">
+              <div class="scen-header">
+                <span class="scen-title">${s.t}</span>
+                <span class="stars">${s.stars}</span>
+              </div>
+              <div class="scen-intro">${s.intro}</div>
+              ${renderTable({ head: s.head, colcls: s.colcls, rows: s.rows })}
+              <div class="scen-watch"><strong>볼 것:</strong> ${s.watch}</div>
+            </div>
+          `).join('')}
+        </section>
+
+        <footer>
+          <p>${data.disclaimer}</p>
+        </footer>
+      `;
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
