@@ -1,0 +1,43 @@
+name: Scheduled Stock Briefing Update
+
+on:
+  schedule:
+    # KST 08:00 (UTC 23:00 전날)
+    - cron: '0 23 * * *'
+    # KST 10:00, 12:00, 14:00, 16:00 (UTC 01:00, 03:00, 05:00, 07:00)
+    - cron: '0 1,3,5,7 * * *'
+    # KST 23:00 (UTC 14:00)
+    - cron: '0 14 * * *'
+  workflow_dispatch: # 필요 시 언제든 수동으로 즉시 갱신 가능 버튼 제공
+
+jobs:
+  update-briefing:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # GitHub에 변경된 data.json을 push하기 위한 권한
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 필수 라이브러리 설치
+        run: |
+          pip install google-genai
+
+      - name: 제미나이 웹검색 및 브리핑 생성
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python update_briefing.py
+
+      - name: 변경 데이터 자동 커밋 및 푸시
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data.json
+          git diff --staged --quiet || (git commit -m "Auto Update Briefing: $(date +'%Y-%m-%d %H:%M:%S KST')" && git push)
